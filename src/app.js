@@ -1,6 +1,8 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
+const path = require("path");
+
 const usersRoutes = require("./routes/users.routes");
 const resourcesRoutes = require("./routes/resources.routes");
 
@@ -8,8 +10,17 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// SERVIR ARCHIVOS SUBIDOS
+const uploadDir = process.env.EFS_UPLOAD_DIR || "./temp_uploads_local";
+app.use(
+  "/temp_uploads_local",
+  express.static(path.resolve(uploadDir))
+);
+
+// Health check
 app.get("/health", (req, res) => res.json({ ok: true }));
 
+// Rutas API
 app.use("/users", usersRoutes);
 app.use("/resources", resourcesRoutes);
 

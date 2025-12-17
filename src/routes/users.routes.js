@@ -1,34 +1,71 @@
-// src/routes/users.routes.js
 const express = require("express");
 const pool = require("../db");
 const router = express.Router();
 
-// POST /users  -> registrar usuario (con password y role)
+/**
+ * POST /users
+ * Registra un usuario y guarda hora de registro en log
+ */
 router.post("/", async (req, res) => {
+  const client = await pool.connect();
+
   try {
     const { name, email, password, role } = req.body;
 
-    if (!name || !email || !password) {
-      return res.status(400).json({ error: "name, email y password son requeridos" });
+    if (!email || !password) {
+      return res.status(400).json({ error: "email y password son requeridos" });
     }
 
-    // 3. Definir el rol: si no se proporciona en el body, usa 'cliente' (el nuevo default)
-    const userRole = role || 'cliente'; // ¡AJUSTE HECHO AQUÍ!
+    const allowedRoles = ["estudiante", "profesor"];
+    const userRole = role && allowedRoles.includes(role) ? role : "estudiante";
 
-    const q = `
-        INSERT INTO users (name, email, password, role) 
-        VALUES ($1, $2, $3, $4) 
-        RETURNING id, name, email, role, created_at
+    await client.query("BEGIN");
+
+    const qUser = `
+      INSERT INTO users (name, email, password, role)
+      VALUES ($1, $2, $3, $4)
+      RETURNING id, name, email, role
     `;
-    
-    const r = await pool.query(q, [name, email, password, userRole]);
-    
-    res.status(201).json(r.rows[0]);
 
+    const rUser = await client.query(qUser, [
+      name || null,
+      email,
+      password,
+      userRole,
+    ]);
+
+    const newUser = rUser.rows[0];
+
+    const qLog = `
+      INSERT INTO logs (entity, entity_id, action)
+      VALUES ($1, $2, $3)
+    `;
+    await client.query(qLog, ["user", newUser.id, "USER_CREATED"]);
+
+    await client.query("COMMIT");
+    res.status(201).json(newUser);
   } catch (e) {
-    if (e.code === '23505') { 
-        return res.status(409).json({ error: 'El email ya está registrado.' });
-    }
+    await client.query("ROLLBACK");
+    res.status(500).json({ error: e.message });
+  } finally {
+    client.release();
+  }
+});
+
+/**
+ * GET /users
+ * Obtiene la lista de usuarios
+ */
+router.get("/", async (req, res) => {
+  try {
+    const q = `
+      SELECT id, name, email, role
+      FROM users
+      ORDER BY id DESC
+    `;
+    const r = await pool.query(q);
+    res.json(r.rows);
+  } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
