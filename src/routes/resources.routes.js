@@ -5,7 +5,8 @@ const multer = require("multer");
 const pool = require("../db");
 const router = express.Router();
 
-const uploadDir = process.env.EFS_UPLOAD_DIR || "./temp_uploads_local";
+const uploadDir = path.resolve(process.env.EFS_UPLOAD_DIR || "temp_uploads_local");
+
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
 const storage = multer.diskStorage({
@@ -17,33 +18,6 @@ const storage = multer.diskStorage({
 });
 
 const upload = multer({ storage });
-
-/**
- * GET /resources
- * Lista metadatos de recursos
- */
-router.get("/", async (req, res) => {
-  try {
-    const q = `
-      SELECT
-        r.id,
-        r.original_name,
-        r.stored_name,
-        r.mime_type,
-        r.size_bytes,
-        r.category_id,
-        c.name AS category_name,
-        r.created_at
-      FROM resources r
-      LEFT JOIN categories c ON c.id = r.category_id
-      ORDER BY r.id DESC
-    `;
-    const r = await pool.query(q);
-    res.json(r.rows);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
 
 /**
  * POST /resources/upload
@@ -103,7 +77,7 @@ router.post("/upload", upload.single("file"), async (req, res) => {
 
     const newResource = rInsert.rows[0];
 
-    // Log simple (solo hora)
+    // Guarda el Log simple (solo hora)
     const qLog = `
       INSERT INTO logs (entity, entity_id, action)
       VALUES ($1, $2, $3)
@@ -124,5 +98,106 @@ router.post("/upload", upload.single("file"), async (req, res) => {
     client.release();
   }
 });
+
+/**
+ * GET /resources
+ * Lista los metadatos de recursos
+ */
+router.get("/", async (req, res) => {
+  try {
+    const q = `
+      SELECT
+        r.id,
+        r.original_name,
+        r.stored_name,
+        r.mime_type,
+        r.size_bytes,
+        r.category_id,
+        c.name AS category_name,
+        r.created_at
+      FROM resources r
+      LEFT JOIN categories c ON c.id = r.category_id
+      ORDER BY r.id DESC
+    `;
+    const r = await pool.query(q);
+    res.json(r.rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+
+/**
+ * GET /resources/:id/view
+ * Previsualización (inline) del archivo (imagen/pdf/etc.)
+ */
+router.get("/:id/view", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const q = `
+      SELECT original_name, stored_name, mime_type
+      FROM resources
+      WHERE id = $1
+    `;
+    const r = await pool.query(q, [id]);
+
+    if (r.rowCount === 0) {
+      return res.status(404).json({ error: "Recurso no encontrado" });
+    }
+
+    const file = r.rows[0];
+
+    const baseDir = path.resolve(process.env.EFS_UPLOAD_DIR || "temp_uploads_local");
+    const filePath = path.join(baseDir, file.stored_name);
+
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: "Archivo no existe", filePath });
+    }
+
+    // Content-Type correcto para que el navegador lo muestre
+    if (file.mime_type) res.setHeader("Content-Type", file.mime_type);
+
+    // Inline = se muestra en el navegador (preview)
+    res.setHeader("Content-Disposition", `inline; filename="${file.original_name}"`);
+
+    return res.sendFile(filePath);
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+/**
+ * GET /resources/:id/download
+ * Descarga el archivo por id
+ */
+router.get("/:id/download", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const q = `
+      SELECT original_name, stored_name
+      FROM resources
+      WHERE id = $1
+    `;
+    const r = await pool.query(q, [id]);
+
+    if (r.rowCount === 0) {
+      return res.status(404).json({ error: "Recurso no encontrado" });
+    }
+
+    const file = r.rows[0];
+    const filePath = path.join(uploadDir, file.stored_name);
+
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: "Archivo no existe", filePath });
+    }
+
+    return res.download(filePath, file.original_name);
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
 
 module.exports = router;
