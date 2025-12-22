@@ -10,12 +10,6 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// SERVIR ARCHIVOS SUBIDOS
-const uploadDir = process.env.EFS_UPLOAD_DIR || "./temp_uploads_local";
-app.use(
-  "/temp_uploads_local",
-  express.static(path.resolve(uploadDir))
-);
 
 // Health check
 app.get("/health", (req, res) => res.json({ ok: true }));
