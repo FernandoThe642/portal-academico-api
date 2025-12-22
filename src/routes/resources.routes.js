@@ -148,8 +148,8 @@ router.get("/:id/view", async (req, res) => {
 
     const file = r.rows[0];
 
-    const baseDir = path.resolve(process.env.EFS_UPLOAD_DIR || "temp_uploads_local");
-    const filePath = path.join(baseDir, file.stored_name);
+    const filePath = path.join(uploadDir, file.stored_name);
+
 
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ error: "Archivo no existe", filePath });
