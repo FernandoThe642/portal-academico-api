@@ -5,7 +5,8 @@ const multer = require("multer");
 const pool = require("../db");
 const router = express.Router();
 
-const uploadDir = path.resolve(process.env.EFS_UPLOAD_DIR || "temp_uploads_local");
+const uploadDir = path.resolve(process.env.UPLOAD_DIR || "temp_uploads_local");
+
 
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
